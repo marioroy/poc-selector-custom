@@ -1,17 +1,17 @@
-From d9881d16e209a3649a4ff96c7ee956716ce4ebfd Mon Sep 17 00:00:00 2001
+From 25e5060560414eff8c40aec4b2be7e83b5c8bd84 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Fri, 6 Mar 2026 20:00:00 +0900
-Subject: [PATCH] 6.18.3-poc-selector-v2.2.8
+Date: Sat, 7 Mar 2026 04:17:36 +0900
+Subject: [PATCH] 6.18.3-poc-selector-v2.3.0
 
 ---
  include/linux/sched/topology.h |   33 +-
  init/Kconfig                   |   13 +
  kernel/sched/fair.c            |  144 ++-
  kernel/sched/idle.c            |   10 +
- kernel/sched/poc_selector.c    | 1532 ++++++++++++++++++++++++++++++++
- kernel/sched/sched.h           |   99 +++
+ kernel/sched/poc_selector.c    | 1551 ++++++++++++++++++++++++++++++++
+ kernel/sched/sched.h           |   99 ++
  kernel/sched/topology.c        |  183 ++++
- 7 files changed, 1976 insertions(+), 38 deletions(-)
+ 7 files changed, 1995 insertions(+), 38 deletions(-)
  create mode 100644 kernel/sched/poc_selector.c
 
 diff --git a/include/linux/sched/topology.h b/include/linux/sched/topology.h
@@ -333,10 +333,10 @@ index c39b089d4f..3fffa1a43f 100644
  	 * be set, propagate it into PREEMPT_NEED_RESCHED.
 diff --git a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 new file mode 100644
-index 0000000000..3a2982a139
+index 0000000000..f2a8e4f662
 --- /dev/null
 +++ b/kernel/sched/poc_selector.c
-@@ -0,0 +1,1532 @@
+@@ -0,0 +1,1551 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Piece-Of-Cake (POC) CPU Selector
@@ -376,7 +376,7 @@ index 0000000000..3a2982a139
 +#define SCHED_POC_SELECTOR_AUTHOR   "Masahito Suzuki"
 +#define SCHED_POC_SELECTOR_PROGNAME "Piece-Of-Cake (POC) CPU Selector"
 +
-+#define SCHED_POC_SELECTOR_VERSION  "2.2.8"
++#define SCHED_POC_SELECTOR_VERSION  "2.3.0"
 +
 +/**************************************************************
 + * Static keys:
@@ -517,7 +517,7 @@ index 0000000000..3a2982a139
 + *
 + * Each key can be toggled individually via its own sysctl, or
 + * set as a group via the sched_poc_compat preset sysctl.
-+ * All default to FALSE — zero overhead when compat is off.
++ * Default: native (compat=0).
 + */
 +
 +/*
@@ -525,7 +525,7 @@ index 0000000000..3a2982a139
 + * Check "target CPU idle" before core_mask computation,
 + * instead of "target core idle" (all SMT siblings idle).
 + */
-+DEFINE_STATIC_KEY_FALSE(sched_poc_compat_level1_cpu);
++DEFINE_STATIC_KEY_TRUE(sched_poc_compat_level1_cpu);
 +
 +/*
 + * No CFS gates (v1.9.3 / v2.1.0 behavior):
@@ -533,17 +533,21 @@ index 0000000000..3a2982a139
 + * and SIS_UTIL gate.  In the !core_mask block, Level 4 checks
 + * TARGET's SMT sibling instead of PREV's.
 + */
-+DEFINE_STATIC_KEY_FALSE(sched_poc_compat_no_cfs_gate);
++DEFINE_STATIC_KEY_TRUE(sched_poc_compat_no_cfs_gate);
 +
 +/*
 + * Cluster CTZ selection (v1.9.3 behavior):
 + * poc_cluster_search returns lowest-numbered idle CPU via CTZ
 + * instead of round-robin selection.
 + */
-+DEFINE_STATIC_KEY_FALSE(sched_poc_compat_cluster_ctz);
++DEFINE_STATIC_KEY_TRUE(sched_poc_compat_cluster_ctz);
 +
 +/*
-+ * Current compat mode: 0=v2.2.6 native, 19=v1.9.3, 21=v2.1.0
++ * Current compat mode:
++ *   0  = native (default)
++ *   1  = CFS-compatible
++ *   19 = v1.9.3 pure (early_clear off)
++ *   21 = v2.1.0
 + */
 +static unsigned int poc_compat_mode;
 +
@@ -847,7 +851,7 @@ index 0000000000..3a2982a139
 +	cls_idle = mask & cls_mask;
 +
 +	if (cls_idle) {
-+		if (static_branch_unlikely(&sched_poc_compat_cluster_ctz))
++		if (static_branch_likely(&sched_poc_compat_cluster_ctz))
 +			return base + POC_CTZ64(cls_idle);
 +		return poc_select_rr(base, cls_idle, counter);
 +	}
@@ -1075,7 +1079,7 @@ index 0000000000..3a2982a139
 +#ifdef CONFIG_SCHED_SMT
 +	if (sched_smt_active()) {
 +		/* Compat Level 1 (v1.9.3): CPU-level sticky — before core_mask */
-+		if (static_branch_unlikely(&sched_poc_compat_level1_cpu)
++		if (static_branch_likely(&sched_poc_compat_level1_cpu)
 +				&& (cpu_mask & (1ULL << tgt_bit))) {
 +			poc_count(POC_LV1A_CPU);
 +			poc_commit_selection(target, sd_share);
@@ -1094,14 +1098,14 @@ index 0000000000..3a2982a139
 +			}
 +
 +			/* Level 1b: sync && target CPU idle (core busy OK) */
-+			if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++			if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +					&& sync && (cpu_mask & (1ULL << tgt_bit))) {
 +				poc_count(POC_LV1B);
 +				poc_commit_selection(target, sd_share);
 +				return target;
 +			}
 +
-+			if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++			if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +					&& static_branch_unlikely(&sched_poc_prefer_idle_smt)) {
 +				if (prev != target) {
 +					/* Level 4: prev or its SMT sibling (prev != target) */
@@ -1124,7 +1128,7 @@ index 0000000000..3a2982a139
 +
 +			cpu_mask = core_mask;
 +		} else {
-+			if (static_branch_unlikely(&sched_poc_compat_no_cfs_gate)) {
++			if (static_branch_likely(&sched_poc_compat_no_cfs_gate)) {
 +				/* Compat Level 4: target's SMT sibling (v1.9.3/v2.1.0) */
 +				int cpu = poc_try_idle_smt(base, target, cpu_mask, sd_share);
 +				if (cpu >= 0) {
@@ -1179,7 +1183,7 @@ index 0000000000..3a2982a139
 +		}
 +
 +		/* Level 4a: prev CPU idle (non-SMT) */
-+		if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++		if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +				&& prev != target) {
 +			int prev_bit = prev - base;
 +
@@ -1193,7 +1197,7 @@ index 0000000000..3a2982a139
 +		}
 +
 +		/* Level 4b: recent CPU idle (high value, prev == target) */
-+		if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++		if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +				&& prev == target && recent >= 0) {
 +			int recent_bit = recent - base;
 +
@@ -1224,7 +1228,7 @@ index 0000000000..3a2982a139
 +		}
 +
 +		/* Level 4b: recent idle (low value, prev != target) */
-+		if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++		if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +				&& prev != target && recent >= 0) {
 +			int recent_bit = recent - base;
 +
@@ -1408,7 +1412,7 @@ index 0000000000..3a2982a139
 +					      int write, void *buffer,
 +					      size_t *lenp, loff_t *ppos)
 +{
-+	unsigned int val = static_branch_unlikely(&sched_poc_compat_level1_cpu) ? 1 : 0;
++	unsigned int val = static_branch_likely(&sched_poc_compat_level1_cpu) ? 1 : 0;
 +	struct ctl_table tmp = {
 +		.data    = &val,
 +		.maxlen  = sizeof(val),
@@ -1430,7 +1434,7 @@ index 0000000000..3a2982a139
 +					       int write, void *buffer,
 +					       size_t *lenp, loff_t *ppos)
 +{
-+	unsigned int val = static_branch_unlikely(&sched_poc_compat_no_cfs_gate) ? 1 : 0;
++	unsigned int val = static_branch_likely(&sched_poc_compat_no_cfs_gate) ? 1 : 0;
 +	struct ctl_table tmp = {
 +		.data    = &val,
 +		.maxlen  = sizeof(val),
@@ -1452,7 +1456,7 @@ index 0000000000..3a2982a139
 +					       int write, void *buffer,
 +					       size_t *lenp, loff_t *ppos)
 +{
-+	unsigned int val = static_branch_unlikely(&sched_poc_compat_cluster_ctz) ? 1 : 0;
++	unsigned int val = static_branch_likely(&sched_poc_compat_cluster_ctz) ? 1 : 0;
 +	struct ctl_table tmp = {
 +		.data    = &val,
 +		.maxlen  = sizeof(val),
@@ -1485,31 +1489,44 @@ index 0000000000..3a2982a139
 +		return ret;
 +
 +	switch (val) {
-+	case 0: /* v2.2.6 native — restore all defaults */
-+		static_branch_disable(&sched_poc_compat_level1_cpu);
-+		static_branch_disable(&sched_poc_compat_no_cfs_gate);
-+		static_branch_disable(&sched_poc_compat_cluster_ctz);
-+		static_branch_enable(&sched_poc_early_clear);
-+		static_branch_disable(&sched_poc_smt_fallback);
-+		static_branch_disable(&sched_poc_prefer_idle_smt);
-+		break;
-+
-+	case 19: /* v1.9.3 emulation */
++	case 0: /* native (default) */
 +		static_branch_enable(&sched_poc_compat_level1_cpu);
 +		static_branch_enable(&sched_poc_compat_no_cfs_gate);
 +		static_branch_enable(&sched_poc_compat_cluster_ctz);
-+		static_branch_disable(&sched_poc_early_clear);
-+		static_branch_disable(&sched_poc_smt_fallback);
++		static_branch_enable(&sched_poc_l2_cluster_search);
 +		static_branch_disable(&sched_poc_prefer_idle_smt);
++		static_branch_disable(&sched_poc_smt_fallback);
++		static_branch_enable(&sched_poc_early_clear);
++		break;
++
++	case 1: /* CFS-compatible */
++		static_branch_disable(&sched_poc_compat_level1_cpu);
++		static_branch_disable(&sched_poc_compat_no_cfs_gate);
++		static_branch_disable(&sched_poc_compat_cluster_ctz);
++		static_branch_enable(&sched_poc_l2_cluster_search);
++		static_branch_disable(&sched_poc_prefer_idle_smt);
++		static_branch_disable(&sched_poc_smt_fallback);
++		static_branch_enable(&sched_poc_early_clear);
++		break;
++
++	case 19: /* v1.9.3 pure (early_clear off) */
++		static_branch_enable(&sched_poc_compat_level1_cpu);
++		static_branch_enable(&sched_poc_compat_no_cfs_gate);
++		static_branch_enable(&sched_poc_compat_cluster_ctz);
++		static_branch_enable(&sched_poc_l2_cluster_search);
++		static_branch_disable(&sched_poc_prefer_idle_smt);
++		static_branch_disable(&sched_poc_smt_fallback);
++		static_branch_disable(&sched_poc_early_clear);
 +		break;
 +
 +	case 21: /* v2.1.0 emulation */
 +		static_branch_disable(&sched_poc_compat_level1_cpu);
 +		static_branch_enable(&sched_poc_compat_no_cfs_gate);
 +		static_branch_disable(&sched_poc_compat_cluster_ctz);
-+		static_branch_disable(&sched_poc_early_clear);
-+		static_branch_enable(&sched_poc_smt_fallback);
++		static_branch_enable(&sched_poc_l2_cluster_search);
 +		static_branch_enable(&sched_poc_prefer_idle_smt);
++		static_branch_enable(&sched_poc_smt_fallback);
++		static_branch_disable(&sched_poc_early_clear);
 +		break;
 +
 +	default:
@@ -1683,9 +1700,11 @@ index 0000000000..3a2982a139
 +	const char *name;
 +
 +	switch (poc_compat_mode) {
-+	case 19: name = "v1.9.3"; break;
-+	case 21: name = "v2.1.0"; break;
-+	default: name = "off";    break;
++	case 0:  name = "native";     break;
++	case 1:  name = "CFS-compatible"; break;
++	case 19: name = "v1.9.3";    break;
++	case 21: name = "v2.1.0";    break;
++	default: name = "unknown";   break;
 +	}
 +	return sysfs_emit(buf, "%u (%s)\n", poc_compat_mode, name);
 +}
