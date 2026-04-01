@@ -1,7 +1,7 @@
-From 42dccce7b6c81f6c04b67a100523a7171c788e8d Mon Sep 17 00:00:00 2001
+From 5d190f2a1c6f0ad6909e4af9edb8c1b910748766 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Wed, 1 Apr 2026 21:45:47 +0900
-Subject: [PATCH] 6.18.3-poc-selector-v2.5.0
+Date: Thu, 2 Apr 2026 01:16:57 +0900
+Subject: [PATCH] 6.18.3-poc-selector-vv2.5.0r2
 
 ---
  include/linux/sched/topology.h |   50 +-
@@ -406,7 +406,7 @@ index c39b089d4f..3fffa1a43f 100644
  	 * be set, propagate it into PREEMPT_NEED_RESCHED.
 diff --git a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 new file mode 100644
-index 0000000000..1ab3ef3d38
+index 0000000000..8869ddaa2c
 --- /dev/null
 +++ b/kernel/sched/poc_selector.c
 @@ -0,0 +1,1671 @@
@@ -1547,7 +1547,7 @@ index 0000000000..1ab3ef3d38
 + * to avoid updating the static key and resyncing bitmaps inline.
 + */
 +static void poc_skip_fallback_fn(struct work_struct *work);
-+static DEFINE_WORK(poc_skip_fallback_work, poc_skip_fallback_fn);
++static DECLARE_WORK(poc_skip_fallback_work, poc_skip_fallback_fn);
 +
 +static void poc_skip_fallback_fn(struct work_struct *work)
 +{
