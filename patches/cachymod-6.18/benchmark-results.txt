@@ -24,6 +24,16 @@
    POC v2.1.5 | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 14.324
    POC v2.5.3 | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 14.673
 
+ Apache CouchDB 3.5.1, POC Eager commit = ON
+ Bulk Size: 100 - Inserts: 1000 - Rounds: 30
+ https://openbenchmarking.org/test/pts/couchdb-1.3.0
+ time bash benchbulk.sh 100 1000 30
+
+   NO PREVCPU | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 45.704
+   /w PREVCPU | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 38.020
+   POC v2.1.5 | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 37.889
+   POC v2.5.3 | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 38.630
+
  Chameneos-Redux concurrency benchmark, POC Eager commit = ON
  https://gist.github.com/marioroy/9318cbe6809641078437dee713014400
  python3 chameneos-redux.py 600000
