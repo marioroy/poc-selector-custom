@@ -24,6 +24,15 @@
    POC v2.1.5 | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 14.324
    POC v2.5.3 | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 14.673
 
+ Chameneos-Redux concurrency benchmark, POC Eager commit = ON
+ https://gist.github.com/marioroy/9318cbe6809641078437dee713014400
+ python3 chameneos-redux.py 600000
+
+   NO PREVCPU | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 2.762
+   /w PREVCPU | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 2.906
+   POC v2.1.5 | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 2.980
+   POC v2.5.3 | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 3.192
+
  Count primes 50% CPU saturation, POC Eager commit = ON
  https://github.com/marioroy/mce-sandbox
  algorithm3.pl 1e12 --threads=50%
