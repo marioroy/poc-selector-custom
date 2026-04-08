@@ -9,6 +9,11 @@ Minimalist POC v2.1.5 variant, based on POC v2.1.0 by @firelzrd
   Note: Some apps may work better disabling POC, YMMV
   kernel.sched_poc_selector = 1 (default: ON)
 
+Dependencies:
+  This patch depends on the CachyMod 6.18 0280 patch
+  0280-prefer-prevcpu-for-wakeup.patch
+  https://github.com/marioroy/cachymod
+
 If target CPU is idle, return it immediately for L1/TLB cache affinity
   kernel.sched_poc_target_sticky = 0 (default: OFF)
 
