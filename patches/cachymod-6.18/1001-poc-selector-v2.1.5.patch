@@ -1,5 +1,5 @@
 
-Minimalist POC v2.1.5 variant, based on POC v2.1.0 by @firelzrd
+Minimalist POC v2.1.5-r2 variant, based on POC v2.1.0 by @firelzrd
   This applies fewer changes to kernel/sched/fair, ensuring no anomalies
 
   Copy plugin file "2.1.5.py" to POC repo "benchmark/gui/plugins/" folder
@@ -28,7 +28,7 @@ Signed-off-by: Mario Roy <>
 From 7d942075abcf26c09f7effabce68c1f50d200cb1 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
 Date: Thu, 26 Feb 2026 15:40:51 +0900
-Subject: [PATCH] 6.18.3-poc-selector-v2.1.5
+Subject: [PATCH] 6.18.3-poc-selector-v2.1.5-r2
 
 ---
  include/linux/sched/topology.h |  32 +-
@@ -112,7 +112,7 @@ diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
 index 967ca52fb2..042327d822 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -7897,6 +7897,9 @@ static inline bool asym_fits_cpu(unsigned long util,
+@@ -7893,6 +7893,9 @@ static inline bool asym_fits_cpu(unsigned long util,
  	return true;
  }
  
@@ -122,7 +122,7 @@ index 967ca52fb2..042327d822 100644
  /*
   * Try and locate an idle core/thread in the LLC cache domain.
   */
-@@ -7997,6 +8000,41 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+@@ -7993,6 +7996,41 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
  	if (!sd)
  		return target;
  
@@ -164,7 +164,7 @@ index 967ca52fb2..042327d822 100644
  	if (sched_smt_active()) {
  		has_idle_core = test_idle_cores(target);
  
-@@ -8017,11 +8055,20 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target, int
+@@ -8013,11 +8051,20 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target, int
  	 * first. But prev_cpu or recent_used_cpu may also be a good candidate,
  	 * use them if possible when no idle CPU found in select_idle_cpu().
  	 */
@@ -641,7 +641,7 @@ index 0000000000..77da6e5bda
 +
 +		if (static_branch_unlikely(&sched_poc_target_sticky)) {
 +			core_mask = pmask;
-+			if (core_mask && cpu_rq(target)->nr_running <= 2)
++			if (core_mask && cpu_rq(target)->cfs.h_nr_runnable <= 4)
 +				cpu_mask = core_mask;
 +		} else {
 +			core_mask = pmask | (cpu_mask & (pmask << shift));
