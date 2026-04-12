@@ -35,10 +35,10 @@ Subject: [PATCH] 6.18.3-poc-selector-v2.1.5-r2
  init/Kconfig                   |  13 +
  kernel/sched/fair.c            |  47 +
  kernel/sched/idle.c            |  10 +
- kernel/sched/poc_selector.c    | 901 +++++++++++++++++++++++++++++++++
+ kernel/sched/poc_selector.c    | 905 +++++++++++++++++++++++++++++++++
  kernel/sched/sched.h           | 108 ++++
  kernel/sched/topology.c        | 152 +++++
- 7 files changed, 1261 insertions(+), 2 deletions(-)
+ 7 files changed, 1265 insertions(+), 2 deletions(-)
  create mode 100644 kernel/sched/poc_selector.c
 
 diff --git a/include/linux/sched/topology.h b/include/linux/sched/topology.h
@@ -218,7 +218,7 @@ new file mode 100644
 index 0000000000..77da6e5bda
 --- /dev/null
 +++ b/kernel/sched/poc_selector.c
-@@ -0,0 +1,901 @@
+@@ -0,0 +1,905 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Piece-Of-Cake (POC) CPU Selector
@@ -777,13 +777,15 @@ index 0000000000..77da6e5bda
 +	int ret = proc_douintvec_minmax(&tmp, write, buffer, lenp, ppos);
 +
 +	if (!ret && write) {
-+		cpus_read_lock();
 +		if (val)
 +			static_branch_enable(&sched_poc_target_sticky);
 +		else
 +			static_branch_disable(&sched_poc_target_sticky);
-+		poc_resync_idle_state();
-+		cpus_read_unlock();
++		if (static_branch_likely(&sched_poc_enabled)) {
++			cpus_read_lock();
++			poc_resync_idle_state();
++			cpus_read_unlock();
++		}
 +	}
 +	return ret;
 +}
@@ -802,13 +804,15 @@ index 0000000000..77da6e5bda
 +	int ret = proc_douintvec_minmax(&tmp, write, buffer, lenp, ppos);
 +
 +	if (!ret && write) {
-+		cpus_read_lock();
 +		if (val)
 +			static_branch_enable(&sched_poc_eager_commit);
 +		else
 +			static_branch_disable(&sched_poc_eager_commit);
-+		poc_resync_idle_state();
-+		cpus_read_unlock();
++		if (static_branch_likely(&sched_poc_enabled)) {
++			cpus_read_lock();
++			poc_resync_idle_state();
++			cpus_read_unlock();
++		}
 +	}
 +	return ret;
 +}
