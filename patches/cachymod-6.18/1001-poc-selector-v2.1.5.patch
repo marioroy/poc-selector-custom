@@ -112,7 +112,7 @@ diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
 index 967ca52fb2..042327d822 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -7893,6 +7893,9 @@ static inline bool asym_fits_cpu(unsigned long util,
+@@ -7993,6 +7993,9 @@ static inline bool asym_fits_cpu(unsigned long util,
  	return true;
  }
  
@@ -122,7 +122,7 @@ index 967ca52fb2..042327d822 100644
  /*
   * Try and locate an idle core/thread in the LLC cache domain.
   */
-@@ -7993,6 +7996,41 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+@@ -8093,6 +8096,41 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target, int sync)
  	if (!sd)
  		return target;
  
@@ -164,7 +164,7 @@ index 967ca52fb2..042327d822 100644
  	if (sched_smt_active()) {
  		has_idle_core = test_idle_cores(target);
  
-@@ -8013,11 +8051,20 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target, int
+@@ -8113,11 +8151,20 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target, int sync)
  	 * first. But prev_cpu or recent_used_cpu may also be a good candidate,
  	 * use them if possible when no idle CPU found in select_idle_cpu().
  	 */
