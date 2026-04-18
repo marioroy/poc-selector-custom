@@ -1,8 +1,9 @@
 
-Minimalist POC v2.1.5-r2 variant, based on POC v2.1.0 by @firelzrd
+Minimalist POC v2.1.6 variant, based on POC v2.1.0 by @firelzrd
   This applies fewer changes to kernel/sched/fair, ensuring no anomalies
+  Includes awareness patch for sched_ext
 
-  Copy plugin file "2.1.5.py" to POC repo "benchmark/gui/plugins/" folder
+  Copy plugin file "2.1.6.py" to POC repo "benchmark/gui/plugins/" folder
   Link: https://github.com/firelzrd/poc-selector
 
   Enable/disable Piece-Of-Cake (POC) CPU Selector or use the POC GUI app
@@ -28,7 +29,7 @@ Signed-off-by: Mario Roy <>
 From 7d942075abcf26c09f7effabce68c1f50d200cb1 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
 Date: Thu, 26 Feb 2026 15:40:51 +0900
-Subject: [PATCH] 6.18.3-poc-selector-v2.1.5-r2
+Subject: [PATCH] 6.18.3-poc-selector-v2.1.6
 
 ---
  include/linux/sched/topology.h |  32 +-
@@ -36,9 +37,9 @@ Subject: [PATCH] 6.18.3-poc-selector-v2.1.5-r2
  kernel/sched/fair.c            |  47 +
  kernel/sched/idle.c            |  10 +
  kernel/sched/poc_selector.c    | 905 +++++++++++++++++++++++++++++++++
- kernel/sched/sched.h           | 108 ++++
+ kernel/sched/sched.h           | 115 ++++
  kernel/sched/topology.c        | 152 +++++
- 7 files changed, 1265 insertions(+), 2 deletions(-)
+ 7 files changed, 1272 insertions(+), 2 deletions(-)
  create mode 100644 kernel/sched/poc_selector.c
 
 diff --git a/include/linux/sched/topology.h b/include/linux/sched/topology.h
@@ -258,7 +259,7 @@ index 0000000000..77da6e5bda
 +#define SCHED_POC_SELECTOR_AUTHOR   "Masahito Suzuki"
 +#define SCHED_POC_SELECTOR_PROGNAME "Piece-Of-Cake (POC) CPU Selector"
 +
-+#define SCHED_POC_SELECTOR_VERSION  "2.1.5"
++#define SCHED_POC_SELECTOR_VERSION  "2.1.6"
 +
 +/**************************************************************
 + * Static keys:
@@ -1128,7 +1129,7 @@ diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
 index adfb6e3409..ae7fec3397 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
-@@ -2212,8 +2212,116 @@ static inline struct task_group *task_group(struct task_struct *p)
+@@ -2213,8 +2213,123 @@ static inline struct task_group *task_group(struct task_struct *p)
  
  #endif /* !CONFIG_CGROUP_SCHED */
  
@@ -1238,8 +1239,15 @@ index adfb6e3409..ae7fec3397 100644
 +	/*
 +	 * Clear given CPU bit in poc_idle_cpus_mask early to close the
 +	 * race window between selection/migration and do_idle() exit.
++	 *
++	 * To minimize Eager Commit overhead, we favor the Concurrent State:
++	 * The state idle_stamp > 0 and nr_running > 0 exists when a CPU has
++	 * recently been idle (has a timestamp) but a new task has just been
++	 * enqueued (incrementing nr_running) before the scheduler clears the
++	 * idle stamp.
 +	 */
-+	if (static_branch_likely(&sched_poc_eager_commit) && cpu_rq(cpu)->nr_running > 0)
++	if (static_branch_likely(&sched_poc_eager_commit)
++			&& likely(cpu_rq(cpu)->idle_stamp) && likely(cpu_rq(cpu)->nr_running))
 +		set_cpu_idle_state_poc(cpu, 0);
 +#endif
  	set_task_rq(p, cpu);
@@ -1410,4 +1418,64 @@ index 444bdfdab7..d21a8153db 100644
  	sd->private = sdd;
 -- 
 2.34.1
+
+Piece-Of-Cake (POC) awareness patch for sched_ext.
+
+ - Disable POC when switching to sched_ext
+ - Restore POC when switching back
+
+Signed-off-by: Mario Roy <>
+---
+ kernel/sched/ext.c | 23 +
+ 1 file changed, 23 insertions(+), 0 deletions(-)
+
+diff -uarp a/kernel/sched/ext.c b/kernel/sched/ext.c
+--- a/kernel/sched/ext.c
++++ b/kernel/sched/ext.c
+@@ -9,6 +9,12 @@
+ #include <linux/btf_ids.h>
+ #include "ext_idle.h"
+ 
++#ifdef CONFIG_SCHED_POC_SELECTOR
++DEFINE_STATIC_KEY_FALSE(sched_poc_transfer_state);
++extern struct static_key_true sched_poc_enabled;
++extern void poc_resync_idle_state(void);
++#endif /* CONFIG_SCHED_POC_SELECTOR */
++
+ /*
+  * NOTE: sched_ext is in the process of growing multiple scheduler support and
+  * scx_root usage is in a transitional state. Naked dereferences are safe if the
+@@ -4192,6 +4198,15 @@ static void scx_disable_workfn(struct kthread_work *work)
+ 	 */
+ 	cpus_read_lock();
+ 	RCU_INIT_POINTER(scx_root, NULL);
++#ifdef CONFIG_SCHED_POC_SELECTOR
++	/* Restore POC when switching back to sched_fair */
++	if (static_branch_likely(&sched_poc_transfer_state)) {
++		static_branch_disable_cpuslocked(&sched_poc_transfer_state);
++		static_branch_enable_cpuslocked(&sched_poc_enabled);
++		/* resync_idle expects caller to hold cpus_read_lock() */
++		poc_resync_idle_state();
++	}
++#endif /* CONFIG_SCHED_POC_SELECTOR */
+ 	cpus_read_unlock();
+ 
+ 	/*
+@@ -4948,6 +4963,14 @@ static void scx_enable_workfn(struct kthread_work *work)
+ 	scx_cgroup_unlock();
+ 	percpu_up_write(&scx_fork_rwsem);
+ 
++#ifdef CONFIG_SCHED_POC_SELECTOR
++	/* Disable Piece-Of-Cake (POC) when switching to sched_ext */
++	if (static_branch_likely(&sched_poc_enabled)) {
++		static_branch_disable_cpuslocked(&sched_poc_enabled);
++		static_branch_enable_cpuslocked(&sched_poc_transfer_state);
++	}
++#endif /* CONFIG_SCHED_POC_SELECTOR */
++
+ 	/*
+ 	 * All tasks are READY. It's safe to turn on scx_enabled() and switch
+ 	 * all eligible tasks.
+-- 
+2.52.0
 
