@@ -3,7 +3,7 @@ Minimalist POC v2.1.5-r3 variant, based on POC v2.1.0 by @firelzrd
   This applies fewer changes to kernel/sched/fair, ensuring no anomalies
   Includes awareness patch for sched_ext
 
-  Copy plugin file "2.1.5" to POC repo "benchmark/gui/plugins/" folder
+  Copy plugin file "2.1.5.py" to POC repo "benchmark/gui/plugins/" folder
   Link: https://github.com/firelzrd/poc-selector
 
   Enable/disable Piece-Of-Cake (POC) CPU Selector or use the POC GUI app
